@@ -76,7 +76,7 @@ class MainScreenState extends State<MainScreen> {
         body: Row(
           children: <Widget>[
             NavigationRail(
-              backgroundColor: Color.fromARGB(255, 25, 52, 95),
+              backgroundColor: Colors.green.shade900,
               selectedIndex: _selectedIndex,
               selectedLabelTextStyle: const TextStyle(
                 color: Colors.white,
@@ -191,7 +191,7 @@ class MainScreenState extends State<MainScreen> {
             ),
             accountEmail: Text(
               user.currentUser?.email ?? '',
-              style: TextStyle(color: Colors.white.withOpacity(0.8)),
+              style: TextStyle(color: Colors.white.withValues(alpha:  0.8)),
             ),
 
             // 2. Estiliza o avatar para criar contraste
@@ -199,19 +199,7 @@ class MainScreenState extends State<MainScreen> {
               backgroundColor: Colors.white, // Fundo branco para destacar
               child: Image.network(
                 user.currentUser!.photoURL!,
-                // loadingBuilder: (context, child, loadingProgress) {
-                //   if (loadingProgress == null) {
-                //     return child;
-                //   }
-                //   return const CircularProgressIndicator();
-                // },
-
-                // errorBuilder: (context, error, stackTrace) {
-                //   if (kDebugMode) {
-                //     print(error);
-                //   }
-                //   return Icon(Icons.person);
-                // },
+               
               ),
             ),
 

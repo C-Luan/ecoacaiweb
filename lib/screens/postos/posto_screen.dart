@@ -66,9 +66,9 @@ class _PostoScreenState extends State<PostoScreen> {
       });
     } catch (e) {
       // Exibe erro de segurança caso as regras do Firestore falhem
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Erro ao atualizar status: Verifique regras de segurança. $e'),
-      ));
+      // ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      //   content: Text('Erro ao atualizar status: Verifique regras de segurança. $e'),
+      // ));
     }
   }
 
@@ -224,22 +224,22 @@ class _PostoScreenState extends State<PostoScreen> {
             Text('Gerencie todos os postos de coleta', style: TextStyle(fontSize: 16, color: Colors.black54)),
           ],
         ),
-        SizedBox(
-          height: 40,
-          child: ElevatedButton.icon(
-            onPressed: () {
-              // Navegar para a tela de criação de novo posto
-            },
-            icon: const Icon(Icons.add, size: 20),
-            label: const Text('Novo Posto'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade600,
-              foregroundColor: Colors.white,
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-            ),
-          ),
-        ),
+        // SizedBox(
+        //   height: 40,
+        //   child: ElevatedButton.icon(
+        //     onPressed: () {
+        //       // Navegar para a tela de criação de novo posto
+        //     },
+        //     icon: const Icon(Icons.add, size: 20),
+        //     label: const Text('Novo Posto'),
+        //     style: ElevatedButton.styleFrom(
+        //       backgroundColor: Colors.green.shade600,
+        //       foregroundColor: Colors.white,
+        //       elevation: 2,
+        //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }

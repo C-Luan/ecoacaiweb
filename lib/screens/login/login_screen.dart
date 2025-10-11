@@ -1,7 +1,5 @@
 import 'package:ecoacaiweb/services/loginserver/authservicefirebase.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 // Certifique-se de que a fonte 'ui-rounded' esteja configurada no pubspec.yaml
@@ -30,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     // Usando as cores do ThemeData
-    final Color primaryColor = Theme.of(context).colorScheme.primary; // Roxo
+// Roxo
     final Color secondaryColor = Theme.of(
       context,
     ).colorScheme.secondary; // Verde
@@ -78,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
-                      color: primaryTextColor.withOpacity(0.7),
+                      color: primaryTextColor.withValues(alpha:  0.7),
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -103,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 18),
                   // Lembrar de mim
                   _buildRememberMeCheckbox(
-                    textColor: primaryTextColor.withOpacity(0.7),
+                    textColor: primaryTextColor.withValues(alpha:  0.7),
                     activeColor: linkColor,
                     value: _rememberMe,
                     onChanged: (bool? newValue) {
@@ -131,13 +129,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       Text(
                         "Não tem uma conta?",
                         style: TextStyle(
-                          color: primaryTextColor.withOpacity(0.7),
+                          color: primaryTextColor.withValues(alpha:  0.7),
                           fontSize: 14,
                         ),
                       ),
                       TextButton(
                         onPressed: () {
-                          print("Navegar para registro");
+                          if (kDebugMode) {
+                            print("Navegar para registro");
+                          }
                           // Implementar navegação para a tela de registro
                         },
                         child: Text(
@@ -179,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Text(
           label,
           style: theme.textTheme.labelMedium?.copyWith(
-            color: textColor.withOpacity(0.9),
+            color: textColor.withValues(alpha:  0.9),
             fontSize: 13,
             fontWeight: FontWeight.w500,
           ),
@@ -224,14 +224,16 @@ class _LoginScreenState extends State<LoginScreen> {
             Text(
               label,
               style: theme.textTheme.labelMedium?.copyWith(
-                color: textColor.withOpacity(0.9),
+                color: textColor.withValues(alpha:  0.9),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
             ),
             InkWell(
               onTap: () {
-                print("Esqueceu a senha?");
+                if (kDebugMode) {
+                  print("Esqueceu a senha?");
+                }
                 // Implementar navegação para recuperação de senha
               },
               child: Text(
@@ -280,9 +282,9 @@ class _LoginScreenState extends State<LoginScreen> {
             onChanged: onChanged,
             activeColor: activeColor, // Cor secundária (verde)
             checkColor: Colors.white,
-            side: MaterialStateBorderSide.resolveWith(
+            side: WidgetStateBorderSide.resolveWith(
               (states) =>
-                  BorderSide(width: 1.5, color: textColor.withOpacity(0.7)),
+                  BorderSide(width: 1.5, color: textColor.withValues(alpha:  0.7)),
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(5),

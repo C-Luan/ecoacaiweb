@@ -1,10 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthServiceFirebase {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   Future<UserCredential?> loginWithGoogle() async {
@@ -25,12 +23,13 @@ class AuthServiceFirebase {
 
       // await _navigateToAppropriateScreen(userCredential.user);
       return userCredential;
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException {
       // _showSnackBar('Erro ao fazer login com o Google: ${e.message}');
     } catch (e) {
       // log(e.toString());
       // _showSnackBar('Ocorreu um erro desconhecido.');
     }
+    return null;
   }
 
   Future<void> signOut() async {
