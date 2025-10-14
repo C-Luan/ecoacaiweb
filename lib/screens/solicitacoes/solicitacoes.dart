@@ -4,6 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+import 'dart:typed_data';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 // O diálogo DetalhesSolicitacaoDialog precisa ser definido, assumindo que está em outro arquivo.
 // Neste exemplo, ele é apenas referenciado, mas a lógica de abertura é mantida.
@@ -147,6 +152,151 @@ class _AcompanhamentoSolicitacoesScreenState
     });
   }
 
+  Future<void> _gerarRelatorioPDF() async {
+    try {
+      // 🔹 Monta a query baseada nos filtros aplicados
+      final query = _criarQueryBase();
+      final snapshot = await query.get();
+
+      if (snapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nenhuma solicitação encontrada.')),
+        );
+        return;
+      }
+
+      final pdf = pw.Document();
+      final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+      // 🔹 Cria lista de linhas da tabela
+      final rows = <List<String>>[];
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        // 🔸 Referências de outras coleções
+        final postoRef = data['postoId'] as DocumentReference?;
+
+        String postoNome = '';
+        String solicitanteNome = '';
+        String endereco = '';
+
+        // 🔹 Busca nomes relacionados
+        if (postoRef != null) {
+          final postoSnap = await postoRef.get();
+          final postoData = postoSnap.data() as Map<String, dynamic>?;
+          postoNome = postoData?['nome'] ?? '';
+          endereco =
+              '${postoData?['endereco']['rua']},${postoData?['endereco']['numero']}';
+        }
+
+        final dataSolicitacao = (data['dataSolicitacao'] as Timestamp?)
+            ?.toDate();
+        final dataFormatada = dataSolicitacao != null
+            ? dateFormat.format(dataSolicitacao)
+            : '';
+
+        final status = data['status'] ?? '';
+
+        rows.add([dataFormatada, postoNome, endereco, status, solicitanteNome]);
+      }
+
+      // 🔹 Adiciona página no PDF
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          build: (pw.Context context) {
+            return [
+              pw.Header(
+                level: 0,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Relatório de Solicitações',
+                      style: pw.TextStyle(
+                        fontSize: 22,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.green800,
+                      ),
+                    ),
+                    pw.Text(
+                      DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Text(
+                'Total de solicitações: ${rows.length}',
+                style: const pw.TextStyle(fontSize: 12),
+              ),
+              pw.SizedBox(height: 16),
+              pw.Table.fromTextArray(
+                headers: ['Data', 'Posto', 'Endereço', 'Status'],
+                data: rows,
+                border: pw.TableBorder.all(
+                  width: 0.5,
+                  color: PdfColors.grey400,
+                ),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.green700,
+                ),
+                cellStyle: const pw.TextStyle(fontSize: 10),
+                headerAlignment: pw.Alignment.center,
+                cellAlignment: pw.Alignment.centerLeft,
+                rowDecoration: pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.2),
+                  ),
+                ),
+                cellPadding: const pw.EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 6,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              pw.Divider(),
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Text(
+                  'Ecoaçaí • Sistema de Acompanhamento de Solicitações',
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                ),
+              ),
+            ];
+          },
+        ),
+      );
+
+      // 🔹 Gera bytes e inicia download (compatível com Flutter Web)
+      final bytes = await pdf.save();
+      final blob = html.Blob([Uint8List.fromList(bytes)], 'application/pdf');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute('download', 'relatorio_solicitacoes.pdf')
+        ..click();
+
+      html.Url.revokeObjectUrl(url);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Relatório gerado com sucesso!')),
+      );
+    } catch (e, stack) {
+      debugPrint('Erro ao gerar relatório: $e\n$stack');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erro ao gerar relatório: $e')));
+    }
+  }
+
   Stream<QuerySnapshot> _buildQuery() {
     // 1. Define as datas padrão (hoje)
     // Início do dia de hoje (00:00:00)
@@ -207,6 +357,27 @@ class _AcompanhamentoSolicitacoesScreenState
     final doc = await _firestore.collection('cidadaos').doc(cidadaoId).get();
     if (!doc.exists) return null;
     return doc.data();
+  }
+
+  Query _criarQueryBase() {
+    Query query = FirebaseFirestore.instance.collection('solicitacoes');
+
+    // Mesma lógica de filtros que você já tem
+    if (_selectedPostoId != null && _selectedPostoId != 'todos') {
+      query = query.where('postoId', isEqualTo: _selectedPostoId);
+    }
+
+    if (_dataInicial != null && _dataFinal != null) {
+      query = query.where(
+        'dataSolicitacao',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(_dataInicial!),
+        isLessThanOrEqualTo: Timestamp.fromDate(_dataFinal!),
+      );
+    }
+
+    query = query.orderBy('dataSolicitacao', descending: true);
+
+    return query;
   }
 
   void _clearFilters() {
@@ -429,6 +600,20 @@ class _AcompanhamentoSolicitacoesScreenState
             ),
           ],
         ),
+        ElevatedButton.icon(
+          onPressed: _gerarRelatorioPDF,
+          icon: const Icon(Icons.picture_as_pdf, size: 20),
+          label: const Text('Gerar Relatório'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red.shade700,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
       ],
     );
   }
@@ -489,20 +674,18 @@ class _AcompanhamentoSolicitacoesScreenState
     );
   }
 
-  // Item da Lista (Card) formatado conforme a UI
   Widget _buildSolicitacaoListItem(Map<String, dynamic> data, String docId) {
-    final postoId = data['postoId'] ?? '';
-
-    final title =
-        data['title'] ?? 'Solicitação de ${data['tipoAcao'] ?? 'Ação'}';
+    // 🔹 Recupera o postoId como DocumentReference
+    final postoRef = data['postoId'] as DocumentReference?;
     final status = data['status'] ?? 'Pendente';
-    final tipoAcao = data['tipoAcao'] ?? 'Coleta';
-    final date = data['dataSolicitacao'] != null
-        ? DateFormat(
-            'dd/MM/yyyy',
-          ).format((data['dataSolicitacao'] as Timestamp).toDate())
+    final dataSolicitacao = data['dataSolicitacao'] != null
+        ? (data['dataSolicitacao'] as Timestamp).toDate()
+        : null;
+    final date = dataSolicitacao != null
+        ? DateFormat('dd/MM/yyyy').format(dataSolicitacao)
         : 'Sem data';
 
+    // 🔹 Cores do status
     Color statusColor;
     Color iconBackgroundColor;
     switch (status) {
@@ -531,18 +714,28 @@ class _AcompanhamentoSolicitacoesScreenState
         borderRadius: BorderRadius.circular(8.0),
         side: BorderSide(color: Colors.grey.shade200, width: 1),
       ),
-      child: FutureBuilder<Map<String, dynamic>?>(
-        future: _buscarPosto(postoId),
+      child: FutureBuilder<DocumentSnapshot?>(
+        future: postoRef?.get(),
         builder: (context, postoSnapshot) {
-          final nomePosto = postoSnapshot.data?['nome'] ?? 'Posto Desconhecido';
-          final cidadaoId = postoSnapshot.data?['cidadaoId'] ?? '';
-          return FutureBuilder<Map<String, dynamic>?>(
-            future: _buscarCidadao(cidadaoId),
-            builder: (context, cidadaoSnapshot) {
-              final nomeCidadao =
-                  cidadaoSnapshot.data?['nome'] ?? 'Cidadão Desconhecido';
+          if (!postoSnapshot.hasData) {
+            return const ListTile(title: Text("Carregando..."));
+          }
 
-              // Carregamento concluído, exibe o ListTile formatado
+          final postoData = postoSnapshot.data?.data() as Map<String, dynamic>?;
+          final nomePosto = postoData?['nome'] ?? 'Posto Desconhecido';
+          final cidadaoRef = postoData?['cidadaoId'] as DocumentReference?;
+
+          return FutureBuilder<DocumentSnapshot?>(
+            future: cidadaoRef?.get(),
+            builder: (context, cidadaoSnapshot) {
+              final cidadaoData =
+                  cidadaoSnapshot.data?.data() as Map<String, dynamic>?;
+              final nomeCidadao =
+                  cidadaoData?['endereco']?['nome'] ?? 'Cidadão Desconhecido';
+
+              // Monta o título final
+              final title = 'Solicitação de Coleta';
+
               return ListTile(
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16.0,
@@ -590,7 +783,7 @@ class _AcompanhamentoSolicitacoesScreenState
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Status Badge
+                    // Badge de status
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -615,12 +808,9 @@ class _AcompanhamentoSolicitacoesScreenState
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(date, style: const TextStyle(fontSize: 14)),
-                        Text(
-                          tipoAcao,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
+                        const Text(
+                          'Coleta',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ],
                     ),
@@ -629,8 +819,8 @@ class _AcompanhamentoSolicitacoesScreenState
                 onTap: () => _abrirDetalhesSolicitacao(
                   context,
                   data,
-                  postoSnapshot.data,
-                  cidadaoSnapshot.data,
+                  postoData,
+                  cidadaoData,
                   docId,
                 ),
               );
