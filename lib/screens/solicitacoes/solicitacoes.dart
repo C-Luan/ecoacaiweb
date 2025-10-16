@@ -10,11 +10,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-// O diálogo DetalhesSolicitacaoDialog precisa ser definido, assumindo que está em outro arquivo.
-// Neste exemplo, ele é apenas referenciado, mas a lógica de abertura é mantida.
-// Para fins de teste, você pode usar um StatelessWidget vazio ou importar o arquivo correto.
-
-// Placeholder para o DetalhesSolicitacaoDialog
+// Placeholder para o DetalhesSolicitacaoDialog (mantido como está)
 class DetalhesSolicitacaoDialog extends StatelessWidget {
   final String nomePosto;
   final String endereco;
@@ -63,7 +59,6 @@ class DetalhesSolicitacaoDialog extends StatelessWidget {
             Navigator.of(context).pop();
           },
         ),
-        // Exemplo de botão para mudar status
         TextButton(
           child: const Text('Concluir'),
           onPressed: () {
@@ -92,38 +87,28 @@ class _AcompanhamentoSolicitacoesScreenState
   List<Map<String, dynamic>> _postosDropdown = [];
 
   bool _isLoadingPostos = true;
-  String _selectedPostoId = 'todos';
+  String _selectedPostoPath = 'todos';
 
-  // Usando null para indicar que não há filtro de data inicialmente
   DateTime? _dataInicial;
   DateTime? _dataFinal;
 
   final dateFormat = DateFormat('dd/MM/yyyy');
 
-  // Controllers para manter os valores exibidos nos campos de texto
   late final TextEditingController dataInicialController;
   late final TextEditingController dataFinalController;
 
   @override
   void initState() {
-    // 1. Obtém a data de hoje
-    final hoje = DateTime.now();
+    final hojeInicial = DateTime.now();
+    final hojeFormatado = dateFormat.format(hojeInicial);
 
-    // 2. Formata a data de hoje para o formato 'dd/MM/yyyy'
-    final hojeFormatado = dateFormat.format(hoje);
-
-    // Inicializa os controllers e define a data de hoje
     dataInicialController = TextEditingController(text: hojeFormatado);
     dataFinalController = TextEditingController(text: hojeFormatado);
 
     super.initState();
     _fetchPostosForDropdown().then((_) {
-      // Inicializa a stream após carregar os postos.
-      // O _buildQuery() agora filtrará apenas a data de hoje,
-      // pois _dataInicial e _dataFinal ainda são null, mas os controllers têm o valor visual.
-      // É importante notar que, como _dataInicial e _dataFinal são null, o _buildQuery()
-      // usará a lógica de "hoje" que ajustamos anteriormente.
-      _solicitacoesStream = _buildQuery();
+      // ✅ AQUI: Chame .snapshots() na Query retornada por _buildBaseQuery()
+      _solicitacoesStream = _buildBaseQuery().snapshots();
       setState(() {});
     });
   }
@@ -139,7 +124,7 @@ class _AcompanhamentoSolicitacoesScreenState
     final snapshot = await _firestore.collection('postos').get();
     final fetchedPostos = snapshot.docs.map((doc) {
       final data = doc.data();
-      return {'id': doc.id, 'nome': data['nome'] ?? 'Sem nome'};
+      return {'id': doc.reference.path, 'nome': data['nome'] ?? 'Sem nome'};
     }).toList();
 
     setState(() {
@@ -147,247 +132,195 @@ class _AcompanhamentoSolicitacoesScreenState
         {'id': 'todos', 'nome': 'Todos'},
         ...fetchedPostos,
       ];
-      _selectedPostoId = 'todos';
+      _selectedPostoPath = 'todos';
       _isLoadingPostos = false;
     });
   }
 
-  Future<void> _gerarRelatorioPDF() async {
-    try {
-      // 🔹 Monta a query baseada nos filtros aplicados
-      final query = _criarQueryBase();
-      final snapshot = await query.get();
+Future<void> _gerarRelatorioPDF() async {
+  try {
+    final query = _buildBaseQuery();
+    final snapshot = await query.get();
 
-      if (snapshot.docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Nenhuma solicitação encontrada.')),
-        );
-        return;
-      }
-
-      final pdf = pw.Document();
-      final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-
-      // 🔹 Cria lista de linhas da tabela
-      final rows = <List<String>>[];
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-
-        // 🔸 Referências de outras coleções
-        final postoRef = data['postoId'] as DocumentReference?;
-
-        String postoNome = '';
-        String solicitanteNome = '';
-        String endereco = '';
-
-        // 🔹 Busca nomes relacionados
-        if (postoRef != null) {
-          final postoSnap = await postoRef.get();
-          final postoData = postoSnap.data() as Map<String, dynamic>?;
-          postoNome = postoData?['nome'] ?? '';
-          endereco =
-              '${postoData?['endereco']['rua']},${postoData?['endereco']['numero']}';
-        }
-
-        final dataSolicitacao = (data['dataSolicitacao'] as Timestamp?)
-            ?.toDate();
-        final dataFormatada = dataSolicitacao != null
-            ? dateFormat.format(dataSolicitacao)
-            : '';
-
-        final status = data['status'] ?? '';
-
-        rows.add([dataFormatada, postoNome, endereco, status, solicitanteNome]);
-      }
-
-      // 🔹 Adiciona página no PDF
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(24),
-          build: (pw.Context context) {
-            return [
-              pw.Header(
-                level: 0,
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      'Relatório de Solicitações',
-                      style: pw.TextStyle(
-                        fontSize: 22,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.green800,
-                      ),
-                    ),
-                    pw.Text(
-                      DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now()),
-                      style: const pw.TextStyle(fontSize: 10),
-                    ),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 10),
-              pw.Text(
-                'Total de solicitações: ${rows.length}',
-                style: const pw.TextStyle(fontSize: 12),
-              ),
-              pw.SizedBox(height: 16),
-              pw.Table.fromTextArray(
-                headers: ['Data', 'Posto', 'Endereço', 'Status'],
-                data: rows,
-                border: pw.TableBorder.all(
-                  width: 0.5,
-                  color: PdfColors.grey400,
-                ),
-                headerStyle: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
-                ),
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.green700,
-                ),
-                cellStyle: const pw.TextStyle(fontSize: 10),
-                headerAlignment: pw.Alignment.center,
-                cellAlignment: pw.Alignment.centerLeft,
-                rowDecoration: pw.BoxDecoration(
-                  border: pw.Border(
-                    bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.2),
-                  ),
-                ),
-                cellPadding: const pw.EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 6,
-                ),
-              ),
-              pw.SizedBox(height: 20),
-              pw.Divider(),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Text(
-                  'Ecoaçaí • Sistema de Acompanhamento de Solicitações',
-                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
-                ),
-              ),
-            ];
-          },
-        ),
-      );
-
-      // 🔹 Gera bytes e inicia download (compatível com Flutter Web)
-      final bytes = await pdf.save();
-      final blob = html.Blob([Uint8List.fromList(bytes)], 'application/pdf');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute('download', 'relatorio_solicitacoes.pdf')
-        ..click();
-
-      html.Url.revokeObjectUrl(url);
-
+    if (snapshot.docs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Relatório gerado com sucesso!')),
+        const SnackBar(content: Text('Nenhuma solicitação encontrada.')),
       );
-    } catch (e, stack) {
-      debugPrint('Erro ao gerar relatório: $e\n$stack');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Erro ao gerar relatório: $e')));
+      return;
     }
-  }
 
-  Stream<QuerySnapshot> _buildQuery() {
-    // 1. Define as datas padrão (hoje)
-    // Início do dia de hoje (00:00:00)
+    final pdf = pw.Document();
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+    final List<List<String>> rows = [
+      ['Data da Solicitação', 'Posto', 'Endereço', 'Status', 'Solicitante']
+    ];
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+
+      final String? postoId = data['postoId'] as String?;
+      String postoNome = '';
+      String endereco = '';
+      String solicitanteNome = '';
+
+      // Buscar posto
+      if (postoId != null && postoId.isNotEmpty) {
+        final postoSnap =
+            await _firestore.collection('postos').doc(postoId).get();
+        if (postoSnap.exists) {
+          final postoData = postoSnap.data() as Map<String, dynamic>;
+          postoNome = postoData['nome'] ?? '';
+          final enderecoMap = postoData['endereco'] as Map<String, dynamic>?;
+          if (enderecoMap != null) {
+            endereco =
+                '${enderecoMap['rua'] ?? ''}, ${enderecoMap['numero'] ?? ''}';
+          }
+
+          // Buscar cidadão associado ao posto
+          final String? cidadaoId = postoData['cidadaoId'] as String?;
+          if (cidadaoId != null && cidadaoId.isNotEmpty) {
+            final cidadaoSnap =
+                await _firestore.collection('cidadaos').doc(cidadaoId).get();
+            if (cidadaoSnap.exists) {
+              final cidadaoData =
+                  cidadaoSnap.data() as Map<String, dynamic>?;
+              solicitanteNome = cidadaoData?['nome'] ?? '';
+            }
+          }
+        }
+      }
+
+      final dataSolicitacao =
+          (data['dataSolicitacao'] as Timestamp?)?.toDate();
+      final dataFormatada =
+          dataSolicitacao != null ? dateFormat.format(dataSolicitacao) : '';
+
+      final status = data['status'] ?? '';
+
+      rows.add([
+        dataFormatada,
+        postoNome,
+        endereco,
+        status,
+        solicitanteNome,
+      ]);
+    }
+
+    // Construir o conteúdo do PDF
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (pw.Context context) => [
+          pw.Center(
+            child: pw.Text(
+              'Relatório de Solicitações',
+              style: pw.TextStyle(
+                fontSize: 20,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 16),
+          pw.Table.fromTextArray(
+            border: pw.TableBorder.all(width: 0.5),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+            headerStyle: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.black,
+            ),
+            cellStyle: const pw.TextStyle(fontSize: 10),
+            data: rows,
+          ),
+        ],
+      ),
+    );
+
+    // Gerar e baixar PDF
+    final bytes = await pdf.save();
+    final blob = html.Blob([bytes], 'application/pdf');
+    final url = html.Url.createObjectUrl(blob);
+
+    final anchor = html.AnchorElement(href: url)
+      ..setAttribute('download', 'relatorio_solicitacoes.pdf')
+      ..click();
+
+    html.Url.revokeObjectUrl(url);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Relatório gerado com sucesso!')),
+    );
+  } catch (e, stack) {
+    debugPrint('Erro ao gerar relatório: $e\n$stack');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erro ao gerar relatório: $e')),
+    );
+  }
+}
+
+
+  // ✅ Função alterada para retornar um objeto Query
+  Query _buildBaseQuery() {
     final hojeInicial = DateTime.now();
     final inicioDoDiaHoje = DateTime(
       hojeInicial.year,
       hojeInicial.month,
       hojeInicial.day,
     );
-
-    // Fim do dia de hoje (23:59:59)
     final fimDoDiaHoje = inicioDoDiaHoje.add(
       const Duration(hours: 23, minutes: 59, seconds: 59),
     );
 
-    // 2. Determina os valores finais para a query
-    // Se _dataInicial for null, usa o início do dia de hoje
     final dataInicialParaQuery = _dataInicial ?? inicioDoDiaHoje;
-
-    // Se _dataFinal for null, usa o fim do dia de hoje
-    // Se _dataFinal não for null, mas queremos o fim do dia, adicionamos o offset
     final dataFinalParaQuery = _dataFinal != null
         ? _dataFinal!.add(const Duration(hours: 23, minutes: 59, seconds: 59))
         : fimDoDiaHoje;
 
-    Query query = _firestore
-        .collection('solicitacoes')
-        .orderBy('dataSolicitacao', descending: true);
+    Query query = _firestore.collection('solicitacoes');
 
-    if (_selectedPostoId != 'todos') {
-      query = query.where('postoId', isEqualTo: _selectedPostoId);
+    if (_selectedPostoPath != 'todos') {
+      query = query.where('postoId', isEqualTo: _selectedPostoPath);
     }
 
-    // Filtro por Data Inicial (sempre aplicado, usando hoje como padrão)
     query = query.where(
       'dataSolicitacao',
       isGreaterThanOrEqualTo: Timestamp.fromDate(dataInicialParaQuery),
     );
 
-    // Filtro por Data Final (sempre aplicado, usando hoje como padrão)
     query = query.where(
       'dataSolicitacao',
       isLessThanOrEqualTo: Timestamp.fromDate(dataFinalParaQuery),
     );
 
-    return query.snapshots();
-  }
-
-  Future<Map<String, dynamic>?> _buscarPosto(String postoId) async {
-    if (postoId.isEmpty) return null;
-    final doc = await _firestore.collection('postos').doc(postoId).get();
-    if (!doc.exists) return null;
-    return doc.data();
-  }
-
-  Future<Map<String, dynamic>?> _buscarCidadao(String cidadaoId) async {
-    if (cidadaoId.isEmpty) return null;
-    final doc = await _firestore.collection('cidadaos').doc(cidadaoId).get();
-    if (!doc.exists) return null;
-    return doc.data();
-  }
-
-  Query _criarQueryBase() {
-    Query query = FirebaseFirestore.instance.collection('solicitacoes');
-
-    // Mesma lógica de filtros que você já tem
-    if (_selectedPostoId != null && _selectedPostoId != 'todos') {
-      query = query.where('postoId', isEqualTo: _selectedPostoId);
-    }
-
-    if (_dataInicial != null && _dataFinal != null) {
-      query = query.where(
-        'dataSolicitacao',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(_dataInicial!),
-        isLessThanOrEqualTo: Timestamp.fromDate(_dataFinal!),
-      );
-    }
-
     query = query.orderBy('dataSolicitacao', descending: true);
 
-    return query;
+    return query; // ✅ Retorna a Query, sem chamar .snapshots()
+  }
+
+  Future<Map<String, dynamic>?> _buscarPosto(String postoPath) async {
+    if (postoPath.isEmpty) return null;
+    final doc = await _firestore.doc(postoPath).get();
+    if (!doc.exists) return null;
+    return doc.data();
+  }
+
+  Future<Map<String, dynamic>?> _buscarCidadao(String cidadaoPath) async {
+    if (cidadaoPath.isEmpty) return null;
+    final doc = await _firestore.doc(cidadaoPath).get();
+    if (!doc.exists) return null;
+    return doc.data();
   }
 
   void _clearFilters() {
     setState(() {
-      _selectedPostoId = 'todos';
+      _selectedPostoPath = 'todos';
       _dataInicial = null;
       _dataFinal = null;
       dataInicialController.clear();
       dataFinalController.clear();
-      _solicitacoesStream = _buildQuery(); // Atualiza a query
+      // ✅ AQUI: Chame .snapshots() na Query retornada por _buildBaseQuery()
+      _solicitacoesStream = _buildBaseQuery().snapshots();
     });
     ScaffoldMessenger.of(
       context,
@@ -420,8 +353,8 @@ class _AcompanhamentoSolicitacoesScreenState
       setState(() {
         _dataInicial = parsedInicial;
         _dataFinal = parsedFinal;
-        // A Query para o posto já está no _selectedPostoId
-        _solicitacoesStream = _buildQuery();
+        // ✅ AQUI: Chame .snapshots() na Query retornada por _buildBaseQuery()
+        _solicitacoesStream = _buildBaseQuery().snapshots();
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -446,7 +379,6 @@ class _AcompanhamentoSolicitacoesScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Título e Descrição (Conforme a imagem)
             const Text(
               'Acompanhamento de Solicitações',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
@@ -458,11 +390,9 @@ class _AcompanhamentoSolicitacoesScreenState
             ),
             const SizedBox(height: 24),
 
-            // Área de Filtros
             _buildFilterArea(context),
             const SizedBox(height: 24),
 
-            // Lista de Solicitações
             _isLoadingPostos
                 ? const Center(child: CircularProgressIndicator())
                 : StreamBuilder<QuerySnapshot>(
@@ -502,20 +432,15 @@ class _AcompanhamentoSolicitacoesScreenState
     );
   }
 
-  // =======================================================
-  // UI/UX Builders
-  // =======================================================
-
   Widget _buildFilterArea(BuildContext context) {
     return Column(
       children: [
         Row(
           children: [
-            // Filtro de Posto (Dropdown)
             Expanded(
               child: DropdownButtonFormField<String>(
                 decoration: _getFilterInputDecoration('Posto'),
-                value: _selectedPostoId,
+                value: _selectedPostoPath,
                 items: _postosDropdown.map((Map<String, dynamic> item) {
                   return DropdownMenuItem<String>(
                     value: item['id'],
@@ -524,13 +449,12 @@ class _AcompanhamentoSolicitacoesScreenState
                 }).toList(),
                 onChanged: (String? newValue) {
                   setState(() {
-                    _selectedPostoId = newValue!;
+                    _selectedPostoPath = newValue!;
                   });
                 },
               ),
             ),
             const SizedBox(width: 16),
-            // Filtro Data Inicial (Campo de Data)
             Expanded(
               child: _buildDateField(
                 context,
@@ -542,7 +466,6 @@ class _AcompanhamentoSolicitacoesScreenState
               ),
             ),
             const SizedBox(width: 16),
-            // Filtro Data Final (Campo de Data)
             Expanded(
               child: _buildDateField(
                 context,
@@ -557,7 +480,6 @@ class _AcompanhamentoSolicitacoesScreenState
         ),
         const SizedBox(height: 20),
 
-        // Botões de Ação
         Row(
           children: [
             ElevatedButton.icon(
@@ -598,27 +520,30 @@ class _AcompanhamentoSolicitacoesScreenState
                 ),
               ),
             ),
-          ],
-        ),
-        ElevatedButton.icon(
-          onPressed: _gerarRelatorioPDF,
-          icon: const Icon(Icons.picture_as_pdf, size: 20),
-          label: const Text('Gerar Relatório'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade700,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8.0),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed: _gerarRelatorioPDF,
+              icon: const Icon(Icons.picture_as_pdf, size: 20),
+              label: const Text('Gerar Relatório'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          ),
+          ],
         ),
       ],
     );
   }
 
-  // Helper para campos de data com DatePicker
   Widget _buildDateField(
     BuildContext context,
     String hint,
@@ -652,13 +577,12 @@ class _AcompanhamentoSolicitacoesScreenState
           ).copyWith(suffixIcon: const Icon(Icons.calendar_today, size: 18)),
           keyboardType: TextInputType.datetime,
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'\d|/'))],
-          onTap: () {}, // Necessário por causa do AbsorbPointer
+          onTap: () {},
         ),
       ),
     );
   }
 
-  // Helper para estilo de input
   InputDecoration _getFilterInputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -675,8 +599,21 @@ class _AcompanhamentoSolicitacoesScreenState
   }
 
   Widget _buildSolicitacaoListItem(Map<String, dynamic> data, String docId) {
-    // 🔹 Recupera o postoId como DocumentReference
-    final postoRef = data['postoId'] as DocumentReference?;
+    // ✅ Assume que data['postoId'] pode ser apenas o ID do documento
+    final String? postoIdFromData = data['postoId'] as String?;
+    String?
+    postoPathForQuery; // Novo nome para a variável que será usada na query
+
+    if (postoIdFromData != null && postoIdFromData.isNotEmpty) {
+      // ✅ Se for apenas o ID, reconstrua o caminho completo.
+      // Assumimos que todos os IDs de postos estão na coleção 'postos'.
+      postoPathForQuery = 'postos/$postoIdFromData';
+    }
+
+    debugPrint(
+      'DEBUG: postoPathForQuery para solicitação ${docId}: $postoPathForQuery',
+    );
+
     final status = data['status'] ?? 'Pendente';
     final dataSolicitacao = data['dataSolicitacao'] != null
         ? (data['dataSolicitacao'] as Timestamp).toDate()
@@ -685,9 +622,9 @@ class _AcompanhamentoSolicitacoesScreenState
         ? DateFormat('dd/MM/yyyy').format(dataSolicitacao)
         : 'Sem data';
 
-    // 🔹 Cores do status
     Color statusColor;
     Color iconBackgroundColor;
+
     switch (status) {
       case 'Pendente':
       case 'Agendada':
@@ -706,7 +643,6 @@ class _AcompanhamentoSolicitacoesScreenState
         statusColor = Colors.grey.shade700;
         iconBackgroundColor = Colors.grey.shade50;
     }
-
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
@@ -715,25 +651,38 @@ class _AcompanhamentoSolicitacoesScreenState
         side: BorderSide(color: Colors.grey.shade200, width: 1),
       ),
       child: FutureBuilder<DocumentSnapshot?>(
-        future: postoRef?.get(),
+        // ✅ Use postoPathForQuery aqui
+        future: postoPathForQuery != null && postoPathForQuery.isNotEmpty
+            ? _firestore.doc(postoPathForQuery).get()
+            : Future.value(null),
         builder: (context, postoSnapshot) {
-          if (!postoSnapshot.hasData) {
-            return const ListTile(title: Text("Carregando..."));
+          if (!postoSnapshot.hasData ||
+              !(postoSnapshot.data?.exists ?? false)) {
+            return const ListTile(title: Text("Carregando posto..."));
           }
 
           final postoData = postoSnapshot.data?.data() as Map<String, dynamic>?;
           final nomePosto = postoData?['nome'] ?? 'Posto Desconhecido';
-          final cidadaoRef = postoData?['cidadaoId'] as DocumentReference?;
+
+          // ✅ Repita a lógica para cidadaoId, se necessário (assumindo que também pode ser só o ID)
+          final String? cidadaoIdFromData = postoData?['cidadaoId'] as String?;
+          String? cidadaoPathForQuery;
+          if (cidadaoIdFromData != null && cidadaoIdFromData.isNotEmpty) {
+            cidadaoPathForQuery = 'cidadaos/$cidadaoIdFromData';
+          }
 
           return FutureBuilder<DocumentSnapshot?>(
-            future: cidadaoRef?.get(),
+            // ✅ Use cidadaoPathForQuery aqui
+            future:
+                cidadaoPathForQuery != null && cidadaoPathForQuery.isNotEmpty
+                ? _firestore.doc(cidadaoPathForQuery).get()
+                : Future.value(null),
             builder: (context, cidadaoSnapshot) {
               final cidadaoData =
                   cidadaoSnapshot.data?.data() as Map<String, dynamic>?;
               final nomeCidadao =
-                  cidadaoData?['endereco']?['nome'] ?? 'Cidadão Desconhecido';
+                  cidadaoData?['nome'] ?? 'Cidadão Desconhecido';
 
-              // Monta o título final
               final title = 'Solicitação de Coleta';
 
               return ListTile(
@@ -783,7 +732,6 @@ class _AcompanhamentoSolicitacoesScreenState
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Badge de status
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -831,10 +779,6 @@ class _AcompanhamentoSolicitacoesScreenState
     );
   }
 
-  // =======================================================
-  // Lógica para Abrir Detalhes (Mantida)
-  // =======================================================
-
   void _abrirDetalhesSolicitacao(
     BuildContext context,
     Map<String, dynamic> solicitacao,
@@ -845,7 +789,7 @@ class _AcompanhamentoSolicitacoesScreenState
     final nomePosto = posto?['nome'] ?? 'Posto não encontrado';
     String endereco = 'Endereço não informado';
     final enderecoData = posto?['endereco'];
-    if (enderecoData is Map) {
+    if (enderecoData is Map<String, dynamic>) {
       final rua = enderecoData['rua'] ?? '';
       final numero = enderecoData['numero'] ?? '';
       final bairro = enderecoData['bairro'] ?? '';
